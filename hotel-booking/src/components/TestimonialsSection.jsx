@@ -40,12 +40,12 @@ const TestimonialsSection = () => {
   };
 
   return (
-    <div className="bg-gray-100 py-10 px-5">
+    <div className="bg-gray-100 min-w-screen rounded-lg py-10 px-5">
       <h2 className="text-3xl font-bold text-center mb-6">Guest Testimonials</h2>
-      <div className="max-w-3xl mx-auto">
+      <div className=" mx-auto">
         <Slider {...settings}>
           {testimonials.map((testimonial) => (
-            <div key={testimonial.id} className="bg-white p-6 rounded-lg shadow-lg text-center">
+            <div key={testimonial.id} className=" rounded-lg  text-center">
               <img
                 src={testimonial.image}
                 alt={testimonial.name}

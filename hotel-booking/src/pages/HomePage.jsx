@@ -45,17 +45,17 @@ function Homepage() {
   // Slider Data
   const slides = [
     {
-      image: "/api/placeholder/1920/1080",
+      image: "https://media.istockphoto.com/id/1829241109/photo/enjoying-a-brunch-together.jpg?s=1024x1024&w=is&k=20&c=QPHFTWoscwMSXOEGKoAKOjlCnMGszppFBrqQHdy4EGc=",
       title: "Experience Luxury Living",
       subtitle: "Where comfort meets elegance"
     },
     {
-      image: "/api/placeholder/1920/1080",
+      image: "https://media.istockphoto.com/id/1453793247/photo/cropped-image-of-female-friends-having-break-on-dinner-together-in-cafeteria-enjoying-healthy.jpg?s=1024x1024&w=is&k=20&c=qlb4RJXOCDr8fOWzptu28RfWYe34tULFaouJHN7pMCo=",
       title: "Exquisite Dining",
       subtitle: "Culinary excellence at its finest"
     },
     {
-      image: "/api/placeholder/1920/1080",
+      image: "https://media.istockphoto.com/id/1468485484/photo/close-up-of-a-poached-egg-sandwich-on-a-white-plate.jpg?s=1024x1024&w=is&k=20&c=j3dkzUXPsaLIbOz9NtFBymXn2XDl32DfEGzeBxZeV44=",
       title: "Premium Amenities",
       subtitle: "Everything you need for a perfect stay"
     }
@@ -105,19 +105,19 @@ function Homepage() {
     {
       name: "Deluxe Suite",
       price: "₹12,000",
-      image: "/api/placeholder/400/300",
+      image: "http://localhost/hotel-api/images/suite2.jpg",
       features: ["Ocean View", "King Bed", "Private Balcony", "Mini Bar"]
     },
     {
       name: "Premium Room",
       price: "₹8,000",
-      image: "/api/placeholder/400/300",
+      image: "http://localhost/hotel-api/images/standard1.jpg",
       features: ["City View", "Queen Bed", "Work Desk", "Room Service"]
     },
     {
       name: "Executive Suite",
       price: "₹15,000",
-      image: "/api/placeholder/400/300",
+      image: "http://localhost/hotel-api/images/deluxe2.jpg",
       features: ["Mountain View", "King Bed", "Jacuzzi", "Lounge Access"]
     }
   ];
@@ -187,7 +187,7 @@ function Homepage() {
   return (
     <div className="bg-gray-50 text-gray-900">
       {/* Hero Section with Slider */}
-      <section className="relative h-screen overflow-hidden">
+      <section className="relative h-96 overflow-hidden">
         {/* Slider Navigation */}
         <button 
           onClick={prevSlide}
@@ -312,20 +312,7 @@ function Homepage() {
         </div>
       </section>
 
-      {/* Statistics Section */}
-      <section className="py-20 bg-green-600">
-        <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-4 gap-8 text-white">
-            {statistics.map((stat, index) => (
-              <div key={index} className="text-center">
-                <div className="text-4xl mb-4">{stat.icon}</div>
-                <div className="text-4xl font-bold mb-2">{stat.value}</div>
-                <div className="text-lg opacity-90">{stat.label}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+  
 
       {/* Room Types Section */}
       <section className="py-20 container mx-auto px-4">
@@ -368,6 +355,7 @@ function Homepage() {
           ))}
         </div>
       </section>
+
 
       <section className="py-20 bg-white">
         <div className="container mx-auto px-4">
@@ -436,6 +424,21 @@ function Homepage() {
                     'Sold Out'
                   )}
                 </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+    {/* Statistics Section */}
+    <section className="py-20 bg-gray-600">
+        <div className="container mx-auto px-4">
+          <div className="grid md:grid-cols-4 gap-8 text-white">
+            {statistics.map((stat, index) => (
+              <div key={index} className="text-center">
+                <div className="text-4xl mb-4">{stat.icon}</div>
+                <div className="text-4xl font-bold mb-2">{stat.value}</div>
+                <div className="text-lg opacity-90">{stat.label}</div>
               </div>
             ))}
           </div>

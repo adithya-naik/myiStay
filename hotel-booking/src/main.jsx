@@ -1,10 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter as Router } from "react-router-dom";
 import App from "./App.jsx";
+import "./index.css"; // Make sure Tailwind and global styles are imported
 
 ReactDOM.createRoot(document.getElementById("root")).render(
-  <BrowserRouter>
-    <App />
-  </BrowserRouter>
+  <React.StrictMode>
+    <Router>
+      <div className="pt-16">
+        <App />
+      </div>
+    </Router>
+  </React.StrictMode>
 );
