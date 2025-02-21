@@ -1,67 +1,66 @@
-import React from "react";
-import Slider from "react-slick";
-import "slick-carousel/slick/slick.css";
-import "slick-carousel/slick/slick-theme.css";
-
-const testimonials = [
-  {
-    id: 1,
-    name: "Rahul Sharma",
-    image: "https://via.placeholder.com/100",
-    rating: 5,
-    review: "Amazing stay! The rooms were clean, and the service was top-notch.",
-  },
-  {
-    id: 2,
-    name: "Ananya Rao",
-    image: "https://via.placeholder.com/100",
-    rating: 4,
-    review: "Great experience! Loved the ambience and hospitality.",
-  },
-  {
-    id: 3,
-    name: "Vikram Singh",
-    image: "https://via.placeholder.com/100",
-    rating: 5,
-    review: "Best hotel in town! Highly recommended for a relaxing stay.",
-  },
-];
+import React, { useEffect, useState } from "react";
 
 const TestimonialsSection = () => {
-  const settings = {
-    dots: true,
-    infinite: true,
-    speed: 500,
-    slidesToShow: 1,
-    slidesToScroll: 1,
-    autoplay: true,
-    autoplaySpeed: 3000,
-    arrows: false,
-  };
+    const [testimonials, setTestimonials] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
-  return (
-    <div className="bg-gray-100 min-w-screen rounded-lg py-10 px-5">
-      <h2 className="text-3xl font-bold text-center mb-6">Guest Testimonials</h2>
-      <div className=" mx-auto">
-        <Slider {...settings}>
-          {testimonials.map((testimonial) => (
-            <div key={testimonial.id} className=" rounded-lg  text-center">
-              <img
-                src={testimonial.image}
-                alt={testimonial.name}
-                className="w-16 h-16 rounded-full mx-auto mb-3"
-              />
-              <h3 className="text-lg font-semibold">{testimonial.name}</h3>
-              <p className="text-yellow-500 text-xl">
-                {"⭐".repeat(testimonial.rating)}
-              </p>
-              <p className="text-gray-600 mt-2">{testimonial.review}</p>
+    useEffect(() => {
+        fetch("http://localhost/hotel-api/api/testimonials.php")
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then((data) => {
+                console.log("Testimonials data:", data);
+                setTestimonials(data);
+                setLoading(false);
+            })
+            .catch((error) => {
+                console.error("Error fetching testimonials:", error.message);
+                setError("Failed to load testimonials.");
+                setLoading(false);
+            });
+    }, []);
+
+    if (loading) return <p>Loading testimonials...</p>;
+    if (error) return <p>{error}</p>;
+
+    return (
+        <div className="p-4">
+            <h2 className="text-2xl font-bold mb-6 text-center">Testimonials</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {testimonials.map((testimonial) => (
+                    <div key={testimonial.id} className="bg-white p-6 shadow-lg rounded-xl transition-transform transform hover:scale-105">
+                        <div className="flex items-center mb-4">
+                            <img src={testimonial.profile_picture || "/default-profile.png"} alt={testimonial.name} className="w-12 h-12 rounded-full mr-3" />
+                            <div>
+                                <p className="text-lg font-semibold">{testimonial.name}</p>
+                                <p className="text-sm text-gray-500">Rating: {testimonial.rating} ⭐</p>
+                            </div>
+                        </div>
+                        <p className="text-sm text-gray-700 mb-3">{testimonial.message}</p>
+                        <p className="text-xs text-gray-400 mb-2">Helpful: {testimonial.helpful_count}</p>
+
+                        {testimonial.review_images?.length > 0 && (
+                            <div className="flex space-x-2 mt-2">
+                                {testimonial.review_images.map((image, index) => (
+                                    <img
+                                        key={index}
+                                        src={`/images/reviews/${image}`}
+                                        alt={`Review ${index + 1}`}
+                                        className="w-16 h-16 object-cover rounded-md border border-gray-200"
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                ))}
             </div>
-          ))}
-        </Slider>
-      </div>
-    </div>
-  );
+        </div>
+    );
 };
 
 export default TestimonialsSection;

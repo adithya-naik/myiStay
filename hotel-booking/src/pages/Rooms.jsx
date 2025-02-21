@@ -1,61 +1,42 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import Slider from "react-slick";
 import {
-  AlertCircle,
-  Star,
-  CheckCircle,
-  MoreVertical,
-  Wifi,
-  Tv,
-  DollarSign,
-  Users,
-  Maximize,
-  X,
-  Save,
-  Info,
-  Calendar,
-  Share,
-  Heart,
-  HeartOff,
-  Flag
+  AlertCircle, Star, CheckCircle, MoreVertical, Wifi, Tv, DollarSign,
+  Users, Maximize, X, Calendar, Share, Heart, HeartOff, Flag, Filter,
+  Search, ChevronDown, Square, CheckSquare, Info
 } from "lucide-react";
-import { FaHotel } from "react-icons/fa";
+import debounce from 'lodash/debounce';
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 import Loading from "../components/RoomsLoading";
 
 const FeaturedRooms = () => {
+  // State Management
   const [rooms, setRooms] = useState([]);
   const [filteredRooms, setFilteredRooms] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [selectedRoom, setSelectedRoom] = useState(null);
   const [showDetails, setShowDetails] = useState(false);
   const [optionsMenu, setOptionsMenu] = useState({ visible: false, roomId: null });
   const [wishlist, setWishlist] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchInput, setSearchInput] = useState("");
 
-  useEffect(() => {
-    // Load wishlist from localStorage
-    const savedWishlist = JSON.parse(localStorage.getItem('savedRooms') || '[]');
-    setWishlist(savedWishlist.map(room => room.id));
-    
-    setLoading(true);
-    fetch("http://localhost/hotel-api/api/rooms.php")
-      .then((response) => response.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setRooms(data);
-          setFilteredRooms(data);
-        } else {
-          console.error("Invalid data format:", data);
-        }
-        setLoading(false);
-      })
-      .catch((error) => {
-        console.error("Error fetching rooms:", error);
-        setLoading(false);
-      });
-  }, []);
+  // Filter states
+  const [filters, setFilters] = useState({
+    priceRange: { min: 0, max: 10000 },
+    capacity: "",
+    rating: "",
+    amenities: [],
+    status: "all"
+  });
+  
+  const [sortBy, setSortBy] = useState("recommended");
+  const [minPrice, setMinPrice] = useState(0);
+  const [maxPrice, setMaxPrice] = useState(10000);
 
+  // Slider Settings
   const sliderSettings = {
     dots: true,
     infinite: true,
@@ -68,22 +49,127 @@ const FeaturedRooms = () => {
     pauseOnHover: true,
   };
 
+  // Data fetching
+  const fetchRooms = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch("http://localhost/hotel-api/api/rooms.php");
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (Array.isArray(data)) {
+        const prices = data.map(room => parseFloat(room.price));
+        setRooms(data);
+        setFilteredRooms(data);
+        setMinPrice(Math.min(...prices));
+        setMaxPrice(Math.max(...prices));
+        setFilters(prev => ({
+          ...prev,
+          priceRange: { min: Math.min(...prices), max: Math.max(...prices) }
+        }));
+      } else {
+        throw new Error('Data is not in the expected format');
+      }
+    } catch (error) {
+      console.error("Error fetching rooms:", error);
+      setError("Failed to load rooms. Please try again later.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Search handling with debounce
+  const debouncedSearch = useCallback(
+    debounce((searchValue) => {
+      setSearchTerm(searchValue);
+    }, 300),
+    []
+  );
+
+  const handleSearchInput = (e) => {
+    e.preventDefault();
+    const value = e.target.value;
+    setSearchInput(value);
+    debouncedSearch(value);
+  };
+
+  // Filter application
+  const applyFiltersAndSort = useCallback(() => {
+    let filtered = [...rooms];
+
+    // Search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      filtered = filtered.filter(room => {
+        const searchFields = [
+          room.room_type,
+          room.description,
+          ...(JSON.parse(room.amenities || "[]")),
+        ].map(field => (field || "").toLowerCase());
+        
+        return searchFields.some(field => field.includes(searchLower));
+      });
+    }
+
+    // Apply filters
+    filtered = filtered.filter(room => {
+      const price = parseFloat(room.price) || 0;
+      const discount = parseFloat(room.discount || 0);
+      const discountedPrice = price - (price * discount / 100);
+      const roomAmenities = JSON.parse(room.amenities || "[]");
+      const roomCapacity = parseInt(room.capacity) || 0;
+      const roomRating = parseFloat(room.rating) || 0;
+
+      return (
+        discountedPrice >= filters.priceRange.min &&
+        discountedPrice <= filters.priceRange.max &&
+        (filters.capacity === "" || roomCapacity >= parseInt(filters.capacity)) &&
+        (filters.rating === "" || roomRating >= parseFloat(filters.rating)) &&
+        (filters.status === "all" || room.status === filters.status) &&
+        (filters.amenities.length === 0 || 
+          filters.amenities.every(amenity => roomAmenities.includes(amenity)))
+      );
+    });
+
+    // Sorting
+    const sortingFunctions = {
+      "price-low": (a, b) => {
+        const priceA = parseFloat(a.price) * (1 - parseFloat(a.discount || 0) / 100);
+        const priceB = parseFloat(b.price) * (1 - parseFloat(b.discount || 0) / 100);
+        return priceA - priceB;
+      },
+      "price-high": (a, b) => {
+        const priceA = parseFloat(a.price) * (1 - parseFloat(a.discount || 0) / 100);
+        const priceB = parseFloat(b.price) * (1 - parseFloat(b.discount || 0) / 100);
+        return priceB - priceA;
+      },
+      "rating": (a, b) => parseFloat(b.rating || 0) - parseFloat(a.rating || 0),
+      "capacity": (a, b) => parseInt(b.capacity || 0) - parseInt(a.capacity || 0),
+      "recommended": (a, b) => parseFloat(b.rating || 0) - parseFloat(a.rating || 0)
+    };
+
+    filtered.sort(sortingFunctions[sortBy] || sortingFunctions.recommended);
+    setFilteredRooms(filtered);
+  }, [rooms, searchTerm, filters, sortBy]);
+
+  // Event Handlers
   const toggleOptionsMenu = (roomId, e) => {
     e.stopPropagation();
-    if (optionsMenu.visible && optionsMenu.roomId === roomId) {
-      setOptionsMenu({ visible: false, roomId: null });
-    } else {
-      setOptionsMenu({ visible: true, roomId });
-    }
+    setOptionsMenu(prev => ({
+      visible: prev.roomId !== roomId || !prev.visible,
+      roomId: roomId
+    }));
   };
 
   const handleBookNow = (room, e) => {
     e.stopPropagation();
-    // Implement booking functionality - redirect to booking page or show booking form
     if (room.status === "available") {
       alert(`Starting booking process for ${room.room_type}`);
-      // Redirect to booking page with room ID
-      // window.location.href = `/booking/${room.id}`;
     }
   };
 
@@ -93,13 +179,11 @@ const FeaturedRooms = () => {
     const isAlreadySaved = savedRooms.some(r => r.id === room.id);
     
     if (!isAlreadySaved) {
-      // Add to wishlist
       savedRooms.push(room);
       setWishlist([...wishlist, room.id]);
       localStorage.setItem('savedRooms', JSON.stringify(savedRooms));
       alert(`${room.room_type} added to your wishlist!`);
     } else {
-      // Remove from wishlist
       const updatedSavedRooms = savedRooms.filter(r => r.id !== room.id);
       setWishlist(wishlist.filter(id => id !== room.id));
       localStorage.setItem('savedRooms', JSON.stringify(updatedSavedRooms));
@@ -111,33 +195,25 @@ const FeaturedRooms = () => {
 
   const handleShareRoom = (room, e) => {
     e.stopPropagation();
-    // Implement share functionality
     if (navigator.share) {
       navigator.share({
         title: `${room.room_type} at Our Hotel`,
         text: `Check out this amazing ${room.room_type} at Our Hotel: ${room.description}`,
         url: window.location.href,
-      })
-      .catch(error => console.log('Error sharing:', error));
+      }).catch(error => console.log('Error sharing:', error));
     } else {
-      // Fallback for browsers that don't support navigator.share
-      const shareUrl = window.location.href;
-      alert(`Share this link: ${shareUrl}`);
+      alert(`Share this link: ${window.location.href}`);
     }
-    
     setOptionsMenu({ visible: false, roomId: null });
   };
 
   const handleReportIssue = (room, e) => {
     e.stopPropagation();
-    // Implement report functionality
     const issue = prompt("Please describe the issue with this listing:");
     if (issue) {
       alert(`Thank you for reporting. Your feedback about ${room.room_type} has been recorded.`);
-      // Here you would normally send this to your backend
       console.log(`Issue reported for room ${room.id}: ${issue}`);
     }
-    
     setOptionsMenu({ visible: false, roomId: null });
   };
 
@@ -153,10 +229,7 @@ const FeaturedRooms = () => {
     setSelectedRoom(null);
   };
 
-  if (loading) {
-    return <Loading />;
-  }
-
+  // Utility Functions
   const parseAmenities = (amenitiesString) => {
     try {
       return JSON.parse(amenitiesString || "[]");
@@ -179,372 +252,415 @@ const FeaturedRooms = () => {
     }
   };
 
-  return (
-    <div className="p-4 bg-gray-50">
-      <h2 className="text-4xl font-bold mb-8 text-green-700 flex items-center">
-        <FaHotel className="mr-2 text-green-600" />
-        Featured Rooms
-      </h2>
+  // Effects
+  useEffect(() => {
+    fetchRooms();
+    const savedWishlist = JSON.parse(localStorage.getItem('savedRooms') || '[]');
+    setWishlist(savedWishlist.map(room => room.id));
+  }, []);
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {filteredRooms.map((room) => {
-          let images = [];
-          try {
-            images = JSON.parse(room.images || "[]");
-          } catch (error) {
-            console.error("Error parsing images:", error);
-          }
+  useEffect(() => {
+    applyFiltersAndSort();
+  }, [applyFiltersAndSort]);
 
-          const discount = room.discount ? parseFloat(room.discount) : 0;
-          const discountedPrice = parseFloat(room.price) - (parseFloat(room.price) * discount) / 100;
-          const amenities = parseAmenities(room.amenities);
-          const isAvailable = room.status === "available";
-          const isInWishlist = wishlist.includes(room.id);
+  // Filter Section Component
+  const FilterSection = () => (
+    <div className="bg-white p-6 rounded-xl shadow-md mb-8">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-5">
+        {/* Search Bar */}
+        <div className="col-span-1 sm:col-span-2 lg:col-span-1">
+          <div className="relative">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Seacrh</label>
+            <Search className="absolute left-3 top-2/3 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+            <input
+              type="text"
+              placeholder="Search rooms..."
+              value={searchInput}
+              onChange={handleSearchInput}
+              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+          </div>
+        </div>
 
-          return (
-            <div
-              key={room.id}
-              className="bg-white shadow-lg rounded-2xl border border-gray-100 transition-all transform hover:shadow-xl relative overflow-hidden"
-            >
-              {images.length > 0 ? (
-                <Slider {...sliderSettings}>
-                  {images.map((img, index) => (
-                    <div className="relative" key={index}>
-                      <img
-                        src={`http://localhost/hotel-api/images/${img}`}
-                        alt={room.room_type}
-                        className="w-full h-64 object-cover"
-                      />
-                      {discount > 0 && (
-                        <span className="absolute top-4 right-4 bg-red-500 text-white px-3 py-1 rounded-lg font-semibold shadow-md">
-                          {discount}% OFF
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </Slider>
-              ) : (
-                <div className="flex items-center justify-center w-full h-64 bg-gray-100">
-                  <AlertCircle className="w-10 h-10 text-gray-400" />
-                  <span className="ml-2 text-gray-500">No Image Available</span>
-                </div>
-              )}
+        {/* Price Range */}
+        <div className="col-span-1">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Price Range</label>
+          <div className="flex gap-4">
+            <input
+              type="number"
+              value={filters.priceRange.min}
+              onChange={(e) => {
+                const value = Math.max(0, parseInt(e.target.value) || 0);
+                setFilters(prev => ({
+                  ...prev,
+                  priceRange: { ...prev.priceRange, min: value }
+                }));
+              }}
+              className="w-1/2 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              min={minPrice}
+              max={maxPrice}
+            />
+            <input
+              type="number"
+              value={filters.priceRange.max}
+              onChange={(e) => {
+                const value = Math.min(maxPrice, parseInt(e.target.value) || 0);
+                setFilters(prev => ({
+                  ...prev,
+                  priceRange: { ...prev.priceRange, max: value }
+                }));
+              }}
+              className="w-1/2 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+              min={minPrice}
+              max={maxPrice}
+            />
+          </div>
+        </div>
 
-              <div className="p-5">
-                <div className="flex justify-between items-start">
-                  <h3 className="text-2xl font-bold text-green-800 mb-2">
-                    {room.room_type}
-                  </h3>
-                  <div className="relative">
-                    <button 
-                      onClick={(e) => toggleOptionsMenu(room.id, e)}
-                      className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                      aria-label="Room options"
-                    >
-                      <MoreVertical className="w-5 h-5 text-gray-600" />
-                    </button>
-                    
-                    {optionsMenu.visible && optionsMenu.roomId === room.id && (
-                      <div className="absolute right-0 top-10 w-48 bg-white shadow-lg rounded-lg z-10 border overflow-hidden">
-                        <button 
-                          onClick={(e) => handleToggleWishlist(room, e)}
-                          className="w-full flex items-center p-3 hover:bg-gray-50 text-left"
-                        >
-                          {isInWishlist ? (
-                            <>
-                              <HeartOff className="w-4 h-4 mr-2 text-red-500" />
-                              <span>Remove from Wishlist</span>
-                            </>
-                          ) : (
-                            <>
-                              <Heart className="w-4 h-4 mr-2 text-red-500" />
-                              <span>Add to Wishlist</span>
-                            </>
-                          )}
-                        </button>
-                        <button 
-                          onClick={(e) => showRoomDetails(room, e)}
-                          className="w-full flex items-center p-3 hover:bg-gray-50 text-left border-t"
-                        >
-                          <Info className="w-4 h-4 mr-2 text-blue-600" />
-                          <span>View Room Details</span>
-                        </button>
-                        <button 
-                          onClick={(e) => handleShareRoom(room, e)}
-                          className="w-full flex items-center p-3 hover:bg-gray-50 text-left border-t"
-                        >
-                          <Share className="w-4 h-4 mr-2 text-green-600" />
-                          <span>Share Room</span>
-                        </button>
-                        <button 
-                          onClick={(e) => handleReportIssue(room, e)}
-                          className="w-full flex items-center p-3 hover:bg-gray-50 text-left border-t"
-                        >
-                          <Flag className="w-4 h-4 mr-2 text-orange-500" />
-                          <span>Report Issue</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                
-                <p className="text-sm text-gray-700 mb-3 line-clamp-2">
-                  {room.description}
-                </p>
-                
-                <div className="flex justify-between mb-3">
-                  <div className="text-lg font-bold text-green-700">
-                    {discount > 0 && (
-                      <span className="text-gray-400 line-through mr-2 text-sm">
-                        ₹{parseFloat(room.price).toLocaleString()}
-                      </span>
-                    )}
-                    <span className="text-xl">₹{discountedPrice.toFixed(0)}</span>
-                    <span className="text-sm text-gray-500 font-normal"> / night</span>
-                  </div>
-                  
-                  <div className="flex items-center bg-yellow-50 px-2 py-1 rounded-lg">
-                    <Star className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                    <span className="ml-1 font-semibold text-yellow-700">
-                      {parseFloat(room.rating).toFixed(1)}
-                    </span>
-                  </div>
-                </div>
-                
-                <div className="flex justify-between items-center mb-4">
-                  <div className="flex items-center">
-                    {isAvailable ? (
-                      <div className="flex items-center bg-green-50 px-2 py-1 rounded-lg">
-                        <CheckCircle className="w-4 h-4 text-green-500" />
-                        <span className="ml-1 font-medium text-green-700 text-sm">Available</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center bg-red-50 px-2 py-1 rounded-lg">
-                        <AlertCircle className="w-4 h-4 text-red-500" />
-                        <span className="ml-1 font-medium text-red-700 text-sm">Booked</span>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="flex items-center bg-gray-50 px-2 py-1 rounded-lg">
-                    <Users className="w-4 h-4 text-gray-600" />
-                    <span className="ml-1 text-sm text-gray-700">{room.capacity} guests</span>
-                  </div>
-                </div>
-                
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {amenities.slice(0, 3).map((amenity, index) => (
-                    <div key={index} className="flex items-center bg-blue-50 px-2 py-1 rounded-lg">
-                      {getAmenityIcon(amenity)}
-                      <span className="ml-1 text-xs text-blue-700">{amenity}</span>
-                    </div>
-                  ))}
-                  {amenities.length > 3 && (
-                    <div className="flex items-center bg-gray-50 px-2 py-1 rounded-lg">
-                      <span className="text-xs text-gray-500">+{amenities.length - 3} more</span>
-                    </div>
-                  )}
-                </div>
-                
-                {/* Book Now Button - Outside Three Dots Menu */}
-                <button 
-                  onClick={(e) => handleBookNow(room, e)}
-                  disabled={!isAvailable}
-                  className={`w-full py-3 px-4 rounded-lg font-semibold flex items-center justify-center transition-colors ${
-                    isAvailable 
-                      ? "bg-green-600 hover:bg-green-700 text-white" 
-                      : "bg-gray-200 text-gray-500 cursor-not-allowed"
-                  }`}
-                >
-                  <Calendar className="w-5 h-5 mr-2" />
-                  {isAvailable ? "Book Now" : "Currently Unavailable"}
-                </button>
+        {/* Capacity Filter */}
+        <div className="col-span-1">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Capacity</label>
+          <select
+            value={filters.capacity}
+            onChange={(e) => setFilters(prev => ({ ...prev, capacity: e.target.value }))}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+          >
+            <option value="">Any</option>
+            <option value="1">1 Person</option>
+            <option value="2">2 People</option>
+            <option value="3">3 People</option>
+            <option value="4">4+ People</option>
+          </select>
+        </div>
+
+        {/* Rating Filter */}
+        <div className="col-span-1">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Rating</label>
+          <select
+            value={filters.rating}
+            onChange={(e) => setFilters(prev => ({ ...prev, rating: e.target.value }))}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+          >
+            <option value="">Any</option>
+            <option value="4.5">4.5+ ⭐</option>
+            <option value="4">4+ ⭐</option>
+            <option value="3.5">3.5+ ⭐</option>
+            <option value="3">3+ ⭐</option>
+          </select>
+        </div>
+
+        {/* Sort Options */}
+        <div className="col-span-1">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Sort By</label>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+          >
+            <option value="recommended">Recommended</option>
+            <option value="price-low">Price: Low to High</option>
+            <option value="price-high">Price: High to Low</option>
+            <option value="rating">Rating</option>
+            <option value="capacity">Capacity</option>
+          </select>
+        </div>
+        </div>
+    </div>
+  );
+
+  // Room Card Component
+  const RoomCard = ({ room }) => {
+    const isInWishlist = wishlist.includes(room.id);
+    const roomAmenities = parseAmenities(room.amenities);
+    const discountedPrice = parseFloat(room.price) * (1 - parseFloat(room.discount || 0) / 100);
+
+    return (
+      <div 
+        className="bg-white rounded-xl shadow-lg overflow-hidden cursor-pointer transform transition hover:scale-[1.02]"
+        onClick={(e) => showRoomDetails(room, e)}
+      >
+        {/* Room Images Slider */}
+        <div className="relative h-64">
+          <Slider {...sliderSettings}>
+            {JSON.parse(room.images).map((image, index) => (
+              <div key={index} className="h-64">
+                <img
+                  src={`http://localhost/hotel-api/images/${image}`}
+                  alt={`${room.room_type} - View ${index + 1}`}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            ))}
+          </Slider>
+          
+          {/* Status Badge */}
+          <div className={`absolute top-4 left-4 px-3 py-1 rounded-full text-sm font-medium
+            ${room.status === 'available' ? 'bg-green-100 text-green-800' :
+              room.status === 'booked' ? 'bg-red-100 text-red-800' :
+              'bg-yellow-100 text-yellow-800'}`}>
+            {room.status.charAt(0).toUpperCase() + room.status.slice(1)}
+          </div>
+          
+         {/* Discount Badge */}
+          {room.discount && parseFloat(room.discount) > 0 && (
+            <div className="absolute top-4 right-4 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-medium">
+              {parseInt(room.discount)}% OFF
+            </div>
+          )}
+
+        </div>
+
+        <div className="p-6">
+          {/* Room Header */}
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <h3 className="text-xl font-semibold text-gray-900">{room.room_type}</h3>
+              <div className="flex items-center mt-1">
+                <Star className="w-5 h-5 text-yellow-400 fill-current" />
+                <span className="ml-1 text-gray-600">{room.rating}</span>
               </div>
             </div>
-          );
-        })}
-      </div>
-
-      {/* Room Details Modal */}
-      {showDetails && selectedRoom && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-70" onClick={closeDetailsModal}>
-          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto m-4" onClick={e => e.stopPropagation()}>
+            
             <div className="relative">
-              {/* Modal Header */}
-              <div className="flex justify-between items-center p-5 border-b">
-                <h3 className="text-2xl font-bold text-green-800">
-                  {selectedRoom.room_type} - Detailed View
-                </h3>
-                <button 
-                  onClick={closeDetailsModal}
-                  className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                >
-                  <X className="w-5 h-5 text-gray-600" />
-                </button>
-              </div>
+              <button
+                onClick={(e) => toggleOptionsMenu(room.id, e)}
+                className="p-2 hover:bg-gray-100 rounded-full"
+              >
+                <MoreVertical className="w-5 h-5 text-gray-500" />
+              </button>
               
-              {/* Modal Content */}
-              <div className="p-5">
-                {/* Image Gallery */}
-                <div className="mb-6">
-                  <Slider {...sliderSettings}>
-                    {(() => {
-                      let images = [];
-                      try {
-                        images = JSON.parse(selectedRoom.images || "[]");
-                      } catch (error) {
-                        console.error("Error parsing images:", error);
-                      }
-                      
-                      if (images.length === 0) {
-                        return (
-                          <div className="flex items-center justify-center w-full h-80 bg-gray-100">
-                            <AlertCircle className="w-10 h-10 text-gray-400" />
-                            <span className="ml-2 text-gray-500">No Images Available</span>
-                          </div>
-                        );
-                      }
-                      
-                      return images.map((img, index) => (
-                        <div key={index}>
-                          <img
-                            src={`http://localhost/hotel-api/images/${img}`}
-                            alt={`${selectedRoom.room_type} view ${index + 1}`}
-                            className="w-full h-80 object-cover rounded-lg"
-                          />
-                        </div>
-                      ));
-                    })()}
-                  </Slider>
-                </div>
-                
-                {/* Room Description */}
-                <div className="mb-6">
-                  <h4 className="text-xl font-semibold text-gray-800 mb-2">Description</h4>
-                  <p className="text-gray-700">
-                    {selectedRoom.description}
-                  </p>
-                </div>
-                
-                {/* Room Details */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  {/* Pricing Section */}
-                  <div className="bg-green-50 p-4 rounded-xl">
-                    <h4 className="text-lg font-semibold text-green-800 mb-3">Pricing Information</h4>
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600">Regular Price:</span>
-                        <span className="font-medium">₹{parseFloat(selectedRoom.price).toLocaleString()}</span>
-                      </div>
-                      
-                      {parseFloat(selectedRoom.discount) > 0 && (
+              {optionsMenu.visible && optionsMenu.roomId === room.id && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10">
+                  <div className="py-1">
+                    <button
+                      onClick={(e) => handleToggleWishlist(room, e)}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      {isInWishlist ? (
                         <>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600">Discount:</span>
-                            <span className="font-medium text-red-600">{selectedRoom.discount}%</span>
-                          </div>
-                          <div className="flex justify-between border-t pt-2">
-                            <span className="text-gray-600">You Pay:</span>
-                            <span className="font-bold text-green-700">
-                              ₹{(parseFloat(selectedRoom.price) - (parseFloat(selectedRoom.price) * parseFloat(selectedRoom.discount)) / 100).toFixed(0)}
-                            </span>
-                          </div>
+                          <HeartOff className="w-4 h-4 mr-2" />
+                          Remove from Wishlist
+                        </>
+                      ) : (
+                        <>
+                          <Heart className="w-4 h-4 mr-2" />
+                          Add to Wishlist
                         </>
                       )}
-                    </div>
-                  </div>
-                  
-                  {/* Room Features */}
-                  <div className="bg-blue-50 p-4 rounded-xl">
-                    <h4 className="text-lg font-semibold text-blue-800 mb-3">Room Features</h4>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="flex items-center">
-                        <Users className="w-4 h-4 text-blue-700 mr-2" />
-                        <span className="text-gray-700">Capacity: <strong>{selectedRoom.capacity} guests</strong></span>
-                      </div>
-                      <div className="flex items-center">
-                        <Maximize className="w-4 h-4 text-blue-700 mr-2" />
-                        <span className="text-gray-700">Room Size: <strong>{selectedRoom.room_size} sq ft</strong></span>
-                      </div>
-                      <div className="flex items-center">
-                        <Star className="w-4 h-4 text-yellow-500 mr-2" />
-                        <span className="text-gray-700">Rating: <strong>{parseFloat(selectedRoom.rating).toFixed(1)}/5</strong></span>
-                      </div>
-                      <div className="flex items-center">
-                        <CheckCircle className="w-4 h-4 text-green-600 mr-2" />
-                        <span className="text-gray-700">Status: <strong className={selectedRoom.status === "available" ? "text-green-600" : "text-red-600"}>
-                          {selectedRoom.status.charAt(0).toUpperCase() + selectedRoom.status.slice(1)}
-                        </strong></span>
-                      </div>
-                    </div>
+                    </button>
+                    <button
+                      onClick={(e) => handleShareRoom(room, e)}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      <Share className="w-4 h-4 mr-2" />
+                      Share
+                    </button>
+                    <button
+                      onClick={(e) => handleReportIssue(room, e)}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      <Flag className="w-4 h-4 mr-2" />
+                      Report Issue
+                    </button>
                   </div>
                 </div>
-                
-                {/* Amenities */}
-                <div className="mb-6">
-                  <h4 className="text-xl font-semibold text-gray-800 mb-3">Amenities</h4>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {(() => {
-                      let amenities = [];
-                      try {
-                        amenities = JSON.parse(selectedRoom.amenities || "[]");
-                      } catch (error) {
-                        console.error("Error parsing amenities:", error);
-                      }
-                      
-                      return amenities.map((amenity, index) => (
-                        <div key={index} className="flex items-center bg-gray-50 p-3 rounded-lg">
-                          {getAmenityIcon(amenity)}
-                          <span className="ml-2 text-gray-700">{amenity}</span>
-                        </div>
-                      ));
-                    })()}
+              )}
+            </div>
+          </div>
+
+          {/* Room Details */}
+          <div className="space-y-4">
+            <p className="text-gray-600 line-clamp-2">{room.description}</p>
+            
+            {/* Amenities */}
+            <div className="flex items-center space-x-4">
+              {roomAmenities.slice(0, 3).map((amenity, index) => (
+                <div key={index} className="flex items-center text-gray-500">
+                  {getAmenityIcon(amenity)}
+                  <span className="ml-1 text-sm">{amenity}</span>
+                </div>
+              ))}
+              {roomAmenities.length > 3 && (
+                <span className="text-sm text-gray-500">+{roomAmenities.length - 3} more</span>
+              )}
+            </div>
+
+            {/* Price and Action */}
+            <div className="flex items-center justify-between">
+              <div>
+                {room.discount && parseFloat(room.discount) > 0 ? (
+                  <div>
+                    <span className="text-2xl font-bold text-gray-900">
+                      ${discountedPrice.toFixed(2)}
+                    </span>
+                    <span className="ml-2 text-sm text-gray-500 line-through">
+                      ${parseFloat(room.price).toFixed(2)}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-2xl font-bold text-gray-900">
+                    ${parseFloat(room.price).toFixed(2)}
+                  </span>
+                )}
+                <span className="text-sm text-gray-500">/night</span>
+              </div>
+              
+              <button
+                onClick={(e) => handleBookNow(room, e)}
+                disabled={room.status !== 'available'}
+                className={`px-4 py-2 rounded-lg font-medium
+                  ${room.status === 'available'
+                    ? 'bg-green-600 text-white hover:bg-green-700'
+                    : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+              >
+                Book Now
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Details Modal Component
+  const DetailsModal = () => {
+    if (!selectedRoom || !showDetails) return null;
+
+    const roomAmenities = parseAmenities(selectedRoom.amenities);
+    const discountedPrice = parseFloat(selectedRoom.price) * (1 - parseFloat(selectedRoom.discount || 0) / 100);
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className="p-6">
+            {/* Header */}
+            <div className="flex justify-between items-start mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">{selectedRoom.room_type}</h2>
+              <button
+                onClick={closeDetailsModal}
+                className="p-2 hover:bg-gray-100 rounded-full"
+              >
+                <X className="w-6 h-6 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Image Slider */}
+            <div className="mb-8">
+              <Slider {...sliderSettings}>
+                {JSON.parse(selectedRoom.images).map((image, index) => (
+                  <div key={index} className="h-96">
+                    <img
+                      src={`http://localhost/hotel-api/images/${image}`}
+                      alt={`${selectedRoom.room_type} - View ${index + 1}`}
+                      className="w-full h-full object-cover rounded-lg"
+                    />
+                  </div>
+                ))}
+              </Slider>
+            </div>
+
+            {/* Details Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <h3 className="text-xl font-semibold mb-4">Room Details</h3>
+                <div className="space-y-4">
+                  <div className="flex items-center">
+                    <Users className="w-5 h-5 text-gray-500 mr-2" />
+                    <span>Capacity: {selectedRoom.capacity} persons</span>
+                  </div>
+                  <div className="flex items-center">
+                    <Maximize className="w-5 h-5 text-gray-500 mr-2" />
+                    <span>Size: {selectedRoom.size} sq ft</span>
+                  </div>
+                  <div className="flex items-center">
+                    <Star className="w-5 h-5 text-yellow-400 mr-2" />
+                    <span>Rating: {selectedRoom.rating}/5</span>
                   </div>
                 </div>
-                
-                {/* Action Buttons */}
-                <div className="flex gap-4 mt-6">
-                  <button 
-                    onClick={(e) => handleBookNow(selectedRoom, e)}
-                    disabled={selectedRoom.status !== "available"}
-                    className={`flex-1 py-3 px-4 rounded-lg font-semibold flex items-center justify-center ${
-                      selectedRoom.status === "available" 
-                        ? "bg-green-600 hover:bg-green-700 text-white" 
-                        : "bg-gray-200 text-gray-500 cursor-not-allowed"
-                    }`}
-                  >
-                    <Calendar className="w-5 h-5 mr-2" />
-                    {selectedRoom.status === "available" ? "Book Now" : "Currently Unavailable"}
-                  </button>
-                  <button 
-                    onClick={(e) => handleToggleWishlist(selectedRoom, e)}
-                    className="flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-800 py-3 px-4 rounded-lg font-semibold transition-colors"
-                  >
-                    {wishlist.includes(selectedRoom.id) ? (
-                      <>
-                        <HeartOff className="w-5 h-5 mr-2 text-red-500" />
-                        Remove
-                      </>
-                    ) : (
-                      <>
-                        <Heart className="w-5 h-5 mr-2 text-red-500" />
-                        Wishlist
-                      </>
+
+                <h3 className="text-xl font-semibold mt-8 mb-4">Description</h3>
+                <p className="text-gray-600">{selectedRoom.description}</p>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold mb-4">Amenities</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  {roomAmenities.map((amenity, index) => (
+                    <div key={index} className="flex items-center">
+                      {getAmenityIcon(amenity)}
+                      <span className="ml-2">{amenity}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-8">
+                  <h3 className="text-xl font-semibold mb-4">Pricing</h3>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-baseline">
+                      <span className="text-3xl font-bold text-gray-900">
+                        ${discountedPrice.toFixed(2)}
+                      </span>
+                      <span className="text-gray-500 ml-2">/night</span>
+                    </div>
+                    {selectedRoom.discount && parseFloat(selectedRoom.discount) > 0 && (
+                      <div className="mt-2">
+                        <span className="text-gray-500 line-through">
+                          ${parseFloat(selectedRoom.price).toFixed(2)}
+                        </span>
+                        <span className="ml-2 text-red-500">
+                          {selectedRoom.discount}% off
+                        </span>
+                      </div>
                     )}
-                  </button>
-                  <button 
-                    onClick={(e) => handleShareRoom(selectedRoom, e)}
-                    className="flex items-center justify-center bg-gray-100 hover:bg-gray-200 text-gray-800 py-3 px-4 rounded-lg font-semibold transition-colors"
-                  >
-                    <Share className="w-5 h-5 mr-2 text-green-600" />
-                    Share
-                  </button>
+                    <button
+                      onClick={(e) => handleBookNow(selectedRoom, e)}
+                      disabled={selectedRoom.status !== 'available'}
+                      className={`w-full mt-4 px-4 py-2 rounded-lg font-medium
+                        ${selectedRoom.status === 'available'
+                          ? 'bg-green-600 text-white hover:bg-green-700'
+                          : 'bg-gray-200 text-gray-500 cursor-not-allowed'}`}
+                    >
+                      Book Now
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
+      </div>
+    );
+  };
+
+  // Main Render
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <FilterSection />
+      
+      {error ? (
+        <div className="flex items-center justify-center p-4 bg-red-50 rounded-lg">
+          <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
+          <p className="text-red-700">{error}</p>
+        </div>
+      ) : loading ? (
+        <Loading />
+      ) : (
+        <>
+          <div className="mb-6 flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-gray-900">
+              {filteredRooms.length} {filteredRooms.length === 1 ? 'Room' : 'Rooms'} Available
+            </h2>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {filteredRooms.map(room => (
+              <RoomCard key={room.id} room={room} />
+            ))}
+          </div>
+        </>
       )}
+      
+      <DetailsModal />
     </div>
   );
 };
